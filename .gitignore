@@ -1,0 +1,20 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Output folders
+output/
+input/
+
+# VS Code
+.vscode/
+
+# Virtual environments
+venv/
+.venv/
+env/
