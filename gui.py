@@ -174,9 +174,21 @@ progress.pack(pady=10)
 # -------------------- Status --------------------
 status = ctk.CTkLabel(
     app,
-    text="Status: Waiting..."
+    text="Select a Patent Journal PDF to begin."
 )
 status.pack(pady=15)
+# -------------------- Footer --------------------
+footer_frame = ctk.CTkFrame(app, fg_color="transparent")
+footer_frame.pack(side="bottom", fill="x", padx=15, pady=10)
 
+developer_label = ctk.CTkLabel(
+    footer_frame,
+    text="© 2026\nPraveen Reddy Thumukuntla",
+    font=("Constantia", 11, "italic"),
+    text_color="gray70",
+    justify="right"
+)
+
+developer_label.pack(side="right")
 # -------------------- Run --------------------
 app.mainloop()
