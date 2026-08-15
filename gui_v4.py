@@ -17,10 +17,11 @@ from tkcalendar import DateEntry
 import tkinter as tk
 import os
 import time
+import traceback
 
 # ---------------- Backend (Sprint 3 integration) ---------------- #
 # Reuse the existing, unchanged backend modules.
-from patent_extractor import extract_patents
+from patent_extractor import extract_patents, PatentExtractionError
 from range_extractor import extract_date_range
 from excel_writer import save_to_excel
 
@@ -344,7 +345,8 @@ class PatentExtractorApp:
 
     def create_action_section(self):
 
-        frame = ctk.CTkFrame(self.root)
+        self.action_frame = ctk.CTkFrame(self.root)
+        frame = self.action_frame
 
         frame.pack(
             fill="x",
@@ -474,11 +476,13 @@ class PatentExtractorApp:
 
      else:
 
-        # Show Date Range section
+        # Show Date Range section in its original position
+        # (before the action buttons), not appended to the bottom.
         self.date_frame.pack(
             fill="x",
             padx=20,
-            pady=10
+            pady=10,
+            before=self.action_frame
         )
 
         # Update placeholder
@@ -605,6 +609,8 @@ class PatentExtractorApp:
             )
             return
 
+        stage = "starting"
+
         try:
             self.set_controls_state("disabled")
             self.progress["value"] = 0
@@ -612,6 +618,7 @@ class PatentExtractorApp:
             self.status.configure(text="Extracting patents...")
             self.root.update()
 
+            stage = "extraction"
             patents = extract_patents(
                 self.selected_pdf,
                 progress_callback=self.update_progress
@@ -628,6 +635,7 @@ class PatentExtractorApp:
 
             self.output_folder = os.path.dirname(output_file)
 
+            stage = "writing Excel"
             save_to_excel(patents, output_file)
 
             self.progress["value"] = 100
@@ -643,7 +651,11 @@ class PatentExtractorApp:
 
         except Exception as e:
             self.status.configure(text="Extraction failed.")
-            messagebox.showerror("Error", str(e))
+            self.show_extraction_error(
+                os.path.basename(self.selected_pdf),
+                e,
+                stage,
+            )
 
         finally:
             self.set_controls_state("normal")
@@ -670,6 +682,8 @@ class PatentExtractorApp:
             )
             return
 
+        stage = "starting"
+
         try:
             self.set_controls_state("disabled")
             self.progress["value"] = 0
@@ -677,6 +691,7 @@ class PatentExtractorApp:
             self.status.configure(text="Scanning journals...")
             self.root.update()
 
+            stage = "extraction"
             patents = extract_date_range(
                 self.selected_folder,
                 from_date,
@@ -684,6 +699,22 @@ class PatentExtractorApp:
                 progress_callback=self.update_progress,
                 status_callback=self.update_status
             )
+
+            # No journals fell within the selected date range: do not
+            # create an empty workbook or report success.
+            if not patents:
+                self.progress["value"] = 0
+                self.status.configure(
+                    text="No journals matched the selected date range."
+                )
+                messagebox.showwarning(
+                    "No Journals Matched",
+                    "No journals matched the selected date range.\n\n"
+                    "No Excel file was created. Check that the From and "
+                    "To dates cover the journals' publication dates, "
+                    "then try again."
+                )
+                return
 
             output_file = self.build_range_output_path(
                 self.selected_folder,
@@ -693,6 +724,7 @@ class PatentExtractorApp:
 
             self.output_folder = os.path.dirname(output_file)
 
+            stage = "writing Excel"
             save_to_excel(patents, output_file)
 
             self.progress["value"] = 100
@@ -708,10 +740,57 @@ class PatentExtractorApp:
 
         except Exception as e:
             self.status.configure(text="Extraction failed.")
-            messagebox.showerror("Error", str(e))
+            self.show_extraction_error(
+                os.path.basename(self.selected_folder),
+                e,
+                stage,
+            )
 
         finally:
             self.set_controls_state("normal")
+
+    # --------------------------------------------------
+
+    def show_extraction_error(self, source_name, exc, stage):
+        """Show a structured, actionable error instead of a raw dump.
+
+        When the failure is a PatentExtractionError, the offending
+        patent's title, application number and page are shown. For any
+        other exception, the tracked stage and full traceback are shown.
+        The raw exception message is truncated so a huge field value
+        (e.g. an abstract) can never fill the dialog.
+        """
+
+        title = ""
+        application = ""
+        page = ""
+        error_stage = stage
+
+        if isinstance(exc, PatentExtractionError):
+            title = exc.title or ""
+            application = exc.application or ""
+            page = "" if exc.page is None else exc.page
+            error_stage = exc.stage or stage
+
+        exc_message = str(exc).strip().replace("\n", " ")
+        if len(exc_message) > 200:
+            exc_message = exc_message[:200] + " ..."
+
+        full_traceback = "".join(
+            traceback.format_exception(type(exc), exc, exc.__traceback__)
+        )
+
+        message = (
+            f"PDF:\n{source_name}\n\n"
+            f"Patent:\n{title}\n\n"
+            f"Application:\n{application}\n\n"
+            f"Page:\n{page}\n\n"
+            f"Stage:\n{error_stage}\n\n"
+            f"Exception:\n{type(exc).__name__}: {exc_message}\n\n"
+            f"Full traceback:\n{full_traceback}"
+        )
+
+        messagebox.showerror("Extraction Error", message)
 
     # --------------------------------------------------
 

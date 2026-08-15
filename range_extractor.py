@@ -250,6 +250,15 @@ def extract_date_range(
 
         all_patents.extend(patents)
 
+    # Order the combined results chronologically by journal date, using
+    # the parsed date value (never the filename). Python's sort is stable,
+    # so records that share a journal date keep their existing relative
+    # order. Every record carries a valid "Journal Date" here, because it
+    # was only included after that date parsed successfully above.
+    all_patents.sort(
+        key=lambda p: datetime.strptime(p["Journal Date"], "%d/%m/%Y")
+    )
+
     return all_patents
 
 
