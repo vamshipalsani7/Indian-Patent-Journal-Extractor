@@ -18,6 +18,12 @@ import tkinter as tk
 import os
 import time
 
+# ---------------- Backend (Sprint 3 integration) ---------------- #
+# Reuse the existing, unchanged backend modules.
+from patent_extractor import extract_patents
+from range_extractor import extract_date_range
+from excel_writer import save_to_excel
+
 # ---------------- Appearance ---------------- #
 
 ctk.set_appearance_mode("Dark")
@@ -350,8 +356,8 @@ class PatentExtractorApp:
             frame,
             text="Extract Patents",
             width=220,
-            height=40
-            # command added in Part 2
+            height=40,
+            command=self.extract
         )
 
         self.extract_btn.pack(
@@ -362,8 +368,8 @@ class PatentExtractorApp:
             frame,
             text="📂 Open Output Folder",
             width=220,
-            height=35
-            # command added later
+            height=35,
+            command=self.open_output_folder
         )
 
         self.open_btn.pack(
@@ -540,6 +546,215 @@ class PatentExtractorApp:
             "Praveen Reddy Thumukuntla\n\n"
             "© 2026"
         )
+
+    # --------------------------------------------------
+    # Sprint 3 - Backend integration
+    # --------------------------------------------------
+
+    def set_controls_state(self, state):
+        """Enable/disable interactive controls during a run."""
+
+        self.browse_btn.configure(state=state)
+        self.extract_btn.configure(state=state)
+        self.open_btn.configure(state=state)
+        self.single_radio.configure(state=state)
+        self.range_radio.configure(state=state)
+
+    # --------------------------------------------------
+
+    def update_progress(self, current, total):
+        """Progress callback shared by both backend routes."""
+
+        if total:
+            self.progress["value"] = (current / total) * 100
+
+        self.status.configure(
+            text=f"Processing page {current} of {total}..."
+        )
+
+        self.root.update_idletasks()
+
+    # --------------------------------------------------
+
+    def update_status(self, message):
+        """Status callback used by the date-range route."""
+
+        self.status.configure(text=message)
+
+        self.root.update_idletasks()
+
+    # --------------------------------------------------
+
+    def extract(self):
+        """Dispatch the Extract button between single and range modes."""
+
+        if self.mode.get() == "single":
+            self.run_single()
+        else:
+            self.run_range()
+
+    # --------------------------------------------------
+
+    def run_single(self):
+        """Single Patent Journal mode: reuse the Version 3 backend path."""
+
+        if not self.selected_pdf:
+            messagebox.showerror(
+                "Error",
+                "Please select a Patent Journal PDF first."
+            )
+            return
+
+        try:
+            self.set_controls_state("disabled")
+            self.progress["value"] = 0
+
+            self.status.configure(text="Extracting patents...")
+            self.root.update()
+
+            patents = extract_patents(
+                self.selected_pdf,
+                progress_callback=self.update_progress
+            )
+
+            pdf_name = os.path.splitext(
+                os.path.basename(self.selected_pdf)
+            )[0]
+
+            output_file = os.path.join(
+                os.path.dirname(self.selected_pdf),
+                f"{pdf_name}.xlsx"
+            )
+
+            self.output_folder = os.path.dirname(output_file)
+
+            save_to_excel(patents, output_file)
+
+            self.progress["value"] = 100
+
+            self.status.configure(
+                text=f"Done! {len(patents)} patents extracted."
+            )
+
+            messagebox.showinfo(
+                "Success",
+                f"Excel saved successfully!\n\n{output_file}"
+            )
+
+        except Exception as e:
+            self.status.configure(text="Extraction failed.")
+            messagebox.showerror("Error", str(e))
+
+        finally:
+            self.set_controls_state("normal")
+
+    # --------------------------------------------------
+
+    def run_range(self):
+        """Date Range mode: reuse the Version 4 range backend."""
+
+        if not self.selected_folder:
+            messagebox.showerror(
+                "Error",
+                "Please select a journal folder first."
+            )
+            return
+
+        from_date = self.from_date.get_date()
+        to_date = self.to_date.get_date()
+
+        if from_date > to_date:
+            messagebox.showerror(
+                "Error",
+                "From Date must be on or before To Date."
+            )
+            return
+
+        try:
+            self.set_controls_state("disabled")
+            self.progress["value"] = 0
+
+            self.status.configure(text="Scanning journals...")
+            self.root.update()
+
+            patents = extract_date_range(
+                self.selected_folder,
+                from_date,
+                to_date,
+                progress_callback=self.update_progress,
+                status_callback=self.update_status
+            )
+
+            output_file = self.build_range_output_path(
+                self.selected_folder,
+                from_date,
+                to_date
+            )
+
+            self.output_folder = os.path.dirname(output_file)
+
+            save_to_excel(patents, output_file)
+
+            self.progress["value"] = 100
+
+            self.status.configure(
+                text=f"Done! {len(patents)} patents extracted."
+            )
+
+            messagebox.showinfo(
+                "Success",
+                f"Excel saved successfully!\n\n{output_file}"
+            )
+
+        except Exception as e:
+            self.status.configure(text="Extraction failed.")
+            messagebox.showerror("Error", str(e))
+
+        finally:
+            self.set_controls_state("normal")
+
+    # --------------------------------------------------
+
+    def build_range_output_path(self, folder, from_date, to_date):
+        """Build a non-overwriting workbook path inside the selected folder.
+
+        Format:
+            IPO_Patent_Journal_<ddmmyyyy>_to_<ddmmyyyy>.xlsx
+        On collision, append " (1)", " (2)", ... never overwriting.
+        """
+
+        base_name = (
+            "IPO_Patent_Journal_"
+            f"{from_date.strftime('%d%m%Y')}"
+            "_to_"
+            f"{to_date.strftime('%d%m%Y')}"
+        )
+
+        candidate = os.path.join(folder, f"{base_name}.xlsx")
+
+        counter = 1
+        while os.path.exists(candidate):
+            candidate = os.path.join(
+                folder,
+                f"{base_name} ({counter}).xlsx"
+            )
+            counter += 1
+
+        return candidate
+
+    # --------------------------------------------------
+
+    def open_output_folder(self):
+        """Open the folder containing the generated workbook."""
+
+        if not self.output_folder:
+            messagebox.showwarning(
+                "Warning",
+                "Generate an Excel file first."
+            )
+            return
+
+        os.startfile(self.output_folder)
 
     # --------------------------------------------------
 
