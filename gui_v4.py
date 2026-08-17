@@ -1,9 +1,8 @@
 """
 Indian Patent Journal Extractor
-Version 4.0
+Version 5.0
 
-GUI Foundation
-Sprint 1 - Part 1
+GUI
 
 Author:
 Praveen Reddy Thumukuntla
@@ -13,17 +12,21 @@ import customtkinter as ctk
 from tkinter import ttk
 from tkinter import filedialog
 from tkinter import messagebox
-from tkcalendar import DateEntry
 import tkinter as tk
 import os
-import time
 import traceback
+from datetime import datetime
 
-# ---------------- Backend (Sprint 3 integration) ---------------- #
-# Reuse the existing, unchanged backend modules.
-from patent_extractor import extract_patents, PatentExtractionError
-from range_extractor import extract_date_range
+# ---------------- Backend ---------------- #
+# Published patents  -> existing (unchanged) publication backend,
+#                       orchestrated for multi-file by batch_extractor.
+# Granted patents    -> independent grant backend.
+# Both share the generic, sanitising Excel writer.
+from batch_extractor import extract_published
+from grant_extractor import extract_grants
 from excel_writer import save_to_excel
+from patent_extractor import PatentExtractionError
+from journal_number import journal_number_range
 
 # ---------------- Appearance ---------------- #
 
@@ -43,7 +46,7 @@ SUBTITLE_FONT = ("Arial", 13)
 SECTION_FONT = ("Arial", 15, "bold")
 STATUS_FONT = ("Arial", 12)
 
-APP_VERSION = "Version 4.0"
+APP_VERSION = "Version 5.0"
 
 # --------------------------------------------------
 
@@ -69,15 +72,15 @@ class PatentExtractorApp:
 
         # ---------------- Variables ---------------- #
 
-        self.mode = tk.StringVar(value="single")
+        # "published" -> published patent applications (existing backend)
+        # "granted"   -> granted patents (independent backend)
+        self.mode = tk.StringVar(value="published")
 
-# Remember selections separately
-        self.selected_pdf = None
-        self.selected_folder = None
+        # One or more selected PDF files (multi-file selection).
+        self.selected_pdfs = []
 
         self.output_folder = None
 
-        self.start_time = None
         self.build_ui()
 
     # --------------------------------------------------
@@ -91,8 +94,6 @@ class PatentExtractorApp:
         self.create_mode_section()
 
         self.create_source_section()
-
-        self.create_date_section()
 
         self.create_action_section()
 
@@ -173,7 +174,7 @@ class PatentExtractorApp:
 
         heading = ctk.CTkLabel(
             frame,
-            text="Extraction Mode",
+            text="Extraction Type",
             font=SECTION_FONT
         )
 
@@ -183,29 +184,29 @@ class PatentExtractorApp:
             pady=(12, 8)
         )
 
-        self.single_radio = ctk.CTkRadioButton(
+        self.published_radio = ctk.CTkRadioButton(
             frame,
-            text="Single Patent Journal",
+            text="Published Patents",
             variable=self.mode,
-            value="single",
+            value="published",
             command=self.toggle_mode
         )
 
-        self.single_radio.pack(
+        self.published_radio.pack(
             anchor="w",
             padx=20,
             pady=4
         )
 
-        self.range_radio = ctk.CTkRadioButton(
+        self.granted_radio = ctk.CTkRadioButton(
             frame,
-            text="Date Range Extraction",
+            text="Granted Patents",
             variable=self.mode,
-            value="range",
+            value="granted",
             command=self.toggle_mode
         )
 
-        self.range_radio.pack(
+        self.granted_radio.pack(
             anchor="w",
             padx=20,
             pady=(4, 12)
@@ -237,7 +238,7 @@ class PatentExtractorApp:
 
         self.source_label = ctk.CTkLabel(
             frame,
-            text="No source selected",
+            text="No PDF(s) selected",
             width=ENTRY_WIDTH,
             height=34,
             corner_radius=8,
@@ -253,92 +254,13 @@ class PatentExtractorApp:
 
         self.browse_btn = ctk.CTkButton(
             frame,
-            text="Browse",
-            width=150,
+            text="Select PDF File(s)",
+            width=180,
             command=self.browse_source
         )
 
         self.browse_btn.pack(
             pady=(8, 15)
-        )
-
-    # --------------------------------------------------
-
-    def create_date_section(self):
-
-        self.date_frame = ctk.CTkFrame(self.root)
-
-        self.date_frame.pack(
-            fill="x",
-            padx=20,
-            pady=10
-        )
-
-        heading = ctk.CTkLabel(
-            self.date_frame,
-            text="Date Range",
-            font=SECTION_FONT
-        )
-
-        heading.pack(
-            anchor="w",
-            padx=15,
-            pady=(12, 12)
-        )
-
-        row = ctk.CTkFrame(
-            self.date_frame,
-            fg_color="transparent"
-        )
-
-        row.pack(
-            pady=(0, 15)
-        )
-
-        from_label = ctk.CTkLabel(
-            row,
-            text="From"
-        )
-
-        from_label.grid(
-            row=0,
-            column=0,
-            padx=10
-        )
-
-        self.from_date = DateEntry(
-            row,
-            date_pattern="dd/mm/yyyy",
-            width=14
-        )
-
-        self.from_date.grid(
-            row=0,
-            column=1,
-            padx=10
-        )
-
-        to_label = ctk.CTkLabel(
-            row,
-            text="To"
-        )
-
-        to_label.grid(
-            row=0,
-            column=2,
-            padx=10
-        )
-
-        self.to_date = DateEntry(
-            row,
-            date_pattern="dd/mm/yyyy",
-            width=14
-        )
-
-        self.to_date.grid(
-            row=0,
-            column=3,
-            padx=10
         )
 
     # --------------------------------------------------
@@ -356,7 +278,7 @@ class PatentExtractorApp:
 
         self.extract_btn = ctk.CTkButton(
             frame,
-            text="Extract Patents",
+            text="Extract",
             width=220,
             height=40,
             command=self.extract
@@ -453,91 +375,51 @@ class PatentExtractorApp:
 
     # --------------------------------------------------
 
+    def _source_text(self):
+        """Label text describing the current PDF selection."""
+
+        count = len(self.selected_pdfs)
+
+        if count == 0:
+            return "No PDF(s) selected"
+
+        if count == 1:
+            return f"📄 {os.path.basename(self.selected_pdfs[0])}"
+
+        return f"📄 {count} PDF(s) selected"
+
+    # --------------------------------------------------
+
     def toggle_mode(self):
+        """Both modes share the same select-file(s) workflow; only the
+        status text differs."""
 
-     if self.mode.get() == "single":
+        self.source_label.configure(text=self._source_text())
 
-        # Hide Date Range section
-        self.date_frame.pack_forget()
-
-        # Update placeholder
-        if self.selected_pdf is None:
-            self.source_label.configure(
-                text="📄 No PDF selected"
-            )
+        if self.mode.get() == "published":
+            self.status.configure(text="Published Patents mode.")
         else:
-            self.source_label.configure(
-                text=f"📄 {os.path.basename(self.selected_pdf)}"
-            )
+            self.status.configure(text="Granted Patents mode.")
 
-        self.status.configure(
-            text="Single Patent Journal mode."
-        )
-
-     else:
-
-        # Show Date Range section in its original position
-        # (before the action buttons), not appended to the bottom.
-        self.date_frame.pack(
-            fill="x",
-            padx=20,
-            pady=10,
-            before=self.action_frame
-        )
-
-        # Update placeholder
-        if self.selected_folder is None:
-            self.source_label.configure(
-                text="📁 No folder selected"
-            )
-        else:
-            self.source_label.configure(
-                text=f"📁 {os.path.basename(self.selected_folder)}"
-            )
-
-        self.status.configure(
-            text="Date Range Extraction mode."
-        )
     # --------------------------------------------------
 
     def browse_source(self):
 
-     if self.mode.get() == "single":
-
-        selected = filedialog.askopenfilename(
-            title="Select Patent Journal PDF",
+        selected = filedialog.askopenfilenames(
+            title="Select Patent Journal PDF File(s)",
             filetypes=[("PDF Files", "*.pdf")]
         )
 
         if selected:
 
-            self.selected_pdf = selected
+            self.selected_pdfs = list(selected)
 
-            self.source_label.configure(
-                text=f"📄 {os.path.basename(selected)}"
-            )
+            self.source_label.configure(text=self._source_text())
 
             self.status.configure(
-                text="Patent Journal selected."
+                text=f"{len(self.selected_pdfs)} PDF(s) selected."
             )
 
-     else:
-
-        selected = filedialog.askdirectory(
-            title="Select Journal Folder"
-        )
-
-        if selected:
-
-            self.selected_folder = selected
-
-            self.source_label.configure(
-                text=f"📁 {os.path.basename(selected)}"
-            )
-
-            self.status.configure(
-                text="Journal folder selected."
-            )
     # --------------------------------------------------
 
     def show_about(self):
@@ -545,14 +427,14 @@ class PatentExtractorApp:
         messagebox.showinfo(
             "About",
             "Indian Patent Journal Extractor\n\n"
-            "Version 4.0\n\n"
+            "Version 5.0\n\n"
             "Developed by\n"
             "Praveen Reddy Thumukuntla\n\n"
             "© 2026"
         )
 
     # --------------------------------------------------
-    # Sprint 3 - Backend integration
+    # Backend integration
     # --------------------------------------------------
 
     def set_controls_state(self, state):
@@ -561,8 +443,8 @@ class PatentExtractorApp:
         self.browse_btn.configure(state=state)
         self.extract_btn.configure(state=state)
         self.open_btn.configure(state=state)
-        self.single_radio.configure(state=state)
-        self.range_radio.configure(state=state)
+        self.published_radio.configure(state=state)
+        self.granted_radio.configure(state=state)
 
     # --------------------------------------------------
 
@@ -581,7 +463,7 @@ class PatentExtractorApp:
     # --------------------------------------------------
 
     def update_status(self, message):
-        """Status callback used by the date-range route."""
+        """Status callback used by both backend routes."""
 
         self.status.configure(text=message)
 
@@ -590,22 +472,35 @@ class PatentExtractorApp:
     # --------------------------------------------------
 
     def extract(self):
-        """Dispatch the Extract button between single and range modes."""
+        """Dispatch the Extract button between the two modes."""
 
-        if self.mode.get() == "single":
-            self.run_single()
+        if self.mode.get() == "published":
+            self.run_extraction(
+                extract_published,
+                "Published",
+                "published patents",
+            )
         else:
-            self.run_range()
+            self.run_extraction(
+                extract_grants,
+                "Granted",
+                "granted patents",
+            )
 
     # --------------------------------------------------
 
-    def run_single(self):
-        """Single Patent Journal mode: reuse the Version 3 backend path."""
+    def run_extraction(self, extractor, label, noun):
+        """Shared run flow for both modes.
 
-        if not self.selected_pdf:
+        `extractor(pdf_files, progress_callback, status_callback)` returns
+        a merged, chronologically sorted list of record dicts. The two
+        modes differ only by which extractor is passed in.
+        """
+
+        if not self.selected_pdfs:
             messagebox.showerror(
                 "Error",
-                "Please select a Patent Journal PDF first."
+                "Please select one or more PDF file(s) first."
             )
             return
 
@@ -615,139 +510,72 @@ class PatentExtractorApp:
             self.set_controls_state("disabled")
             self.progress["value"] = 0
 
-            self.status.configure(text="Extracting patents...")
+            self.status.configure(text=f"Extracting {noun}...")
             self.root.update()
 
             stage = "extraction"
-            patents = extract_patents(
-                self.selected_pdf,
-                progress_callback=self.update_progress
-            )
-
-            pdf_name = os.path.splitext(
-                os.path.basename(self.selected_pdf)
-            )[0]
-
-            output_file = os.path.join(
-                os.path.dirname(self.selected_pdf),
-                f"{pdf_name}.xlsx"
-            )
-
-            self.output_folder = os.path.dirname(output_file)
-
-            stage = "writing Excel"
-            save_to_excel(patents, output_file)
-
-            self.progress["value"] = 100
-
-            self.status.configure(
-                text=f"Done! {len(patents)} patents extracted."
-            )
-
-            messagebox.showinfo(
-                "Success",
-                f"Excel saved successfully!\n\n{output_file}"
-            )
-
-        except Exception as e:
-            self.status.configure(text="Extraction failed.")
-            self.show_extraction_error(
-                os.path.basename(self.selected_pdf),
-                e,
-                stage,
-            )
-
-        finally:
-            self.set_controls_state("normal")
-
-    # --------------------------------------------------
-
-    def run_range(self):
-        """Date Range mode: reuse the Version 4 range backend."""
-
-        if not self.selected_folder:
-            messagebox.showerror(
-                "Error",
-                "Please select a journal folder first."
-            )
-            return
-
-        from_date = self.from_date.get_date()
-        to_date = self.to_date.get_date()
-
-        if from_date > to_date:
-            messagebox.showerror(
-                "Error",
-                "From Date must be on or before To Date."
-            )
-            return
-
-        stage = "starting"
-
-        try:
-            self.set_controls_state("disabled")
-            self.progress["value"] = 0
-
-            self.status.configure(text="Scanning journals...")
-            self.root.update()
-
-            stage = "extraction"
-            patents = extract_date_range(
-                self.selected_folder,
-                from_date,
-                to_date,
+            records = extractor(
+                self.selected_pdfs,
                 progress_callback=self.update_progress,
-                status_callback=self.update_status
+                status_callback=self.update_status,
             )
 
-            # No journals fell within the selected date range: do not
-            # create an empty workbook or report success.
-            if not patents:
+            # Nothing extracted: do not create an empty workbook or report
+            # success.
+            if not records:
                 self.progress["value"] = 0
                 self.status.configure(
-                    text="No journals matched the selected date range."
+                    text=f"No {noun} found in the selected PDF(s)."
                 )
                 messagebox.showwarning(
-                    "No Journals Matched",
-                    "No journals matched the selected date range.\n\n"
-                    "No Excel file was created. Check that the From and "
-                    "To dates cover the journals' publication dates, "
-                    "then try again."
+                    "No Records Found",
+                    f"No {noun} were found in the selected PDF(s).\n\n"
+                    "No Excel file was created. Check that the correct "
+                    "journal PDF(s) were selected for this mode, then try "
+                    "again."
                 )
                 return
 
-            output_file = self.build_range_output_path(
-                self.selected_folder,
-                from_date,
-                to_date
-            )
+            output_file = self.build_output_path(label)
 
             self.output_folder = os.path.dirname(output_file)
 
             stage = "writing Excel"
-            save_to_excel(patents, output_file)
+            save_to_excel(records, output_file)
 
             self.progress["value"] = 100
 
             self.status.configure(
-                text=f"Done! {len(patents)} patents extracted."
+                text=f"Done! {len(records):,} {noun} extracted."
             )
 
             messagebox.showinfo(
-                "Success",
-                f"Excel saved successfully!\n\n{output_file}"
+                "Extraction Completed",
+                "Extraction Completed\n\n"
+                f"{noun.capitalize()} extracted : {len(records):,}\n\n"
+                f"PDFs processed : {len(self.selected_pdfs)}\n\n"
+                f"Output :\n{os.path.basename(output_file)}"
             )
 
         except Exception as e:
             self.status.configure(text="Extraction failed.")
             self.show_extraction_error(
-                os.path.basename(self.selected_folder),
+                self._error_source_name(),
                 e,
                 stage,
             )
 
         finally:
             self.set_controls_state("normal")
+
+    # --------------------------------------------------
+
+    def _error_source_name(self):
+        """A short source description for the error dialog."""
+
+        if len(self.selected_pdfs) == 1:
+            return os.path.basename(self.selected_pdfs[0])
+        return f"{len(self.selected_pdfs)} PDF(s)"
 
     # --------------------------------------------------
 
@@ -794,20 +622,28 @@ class PatentExtractorApp:
 
     # --------------------------------------------------
 
-    def build_range_output_path(self, folder, from_date, to_date):
-        """Build a non-overwriting workbook path inside the selected folder.
+    def build_output_path(self, label):
+        """Build a non-overwriting workbook path next to the first PDF.
 
-        Format:
-            IPO_Patent_Journal_<ddmmyyyy>_to_<ddmmyyyy>.xlsx
+        Named by the range of journals processed, e.g.
+            Granted_Patents_29_to_32.xlsx
+            Granted_Patents_29.xlsx                (single journal)
+        Falls back to a timestamp when journal numbers can't be read:
+            Granted_Patents_2026-08-17_11-54.xlsx
         On collision, append " (1)", " (2)", ... never overwriting.
         """
 
-        base_name = (
-            "IPO_Patent_Journal_"
-            f"{from_date.strftime('%d%m%Y')}"
-            "_to_"
-            f"{to_date.strftime('%d%m%Y')}"
-        )
+        folder = os.path.dirname(self.selected_pdfs[0])
+
+        number_range = journal_number_range(self.selected_pdfs)
+
+        if number_range:
+            low, high = number_range
+            suffix = f"{low}" if low == high else f"{low}_to_{high}"
+        else:
+            suffix = datetime.now().strftime("%Y-%m-%d_%H-%M")
+
+        base_name = f"{label}_Patents_{suffix}"
 
         candidate = os.path.join(folder, f"{base_name}.xlsx")
 
