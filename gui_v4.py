@@ -1,6 +1,6 @@
 """
 Indian Patent Journal Extractor
-Version 5.0
+Version 6.0
 
 GUI
 
@@ -14,8 +14,16 @@ from tkinter import filedialog
 from tkinter import messagebox
 import tkinter as tk
 import os
+import sys
 import traceback
 from datetime import datetime
+
+
+def _resource_path(name):
+    """Resolve a bundled resource both when run from source and when frozen
+    into a PyInstaller onefile exe (files live under sys._MEIPASS then)."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, name)
 
 # ---------------- Backend ---------------- #
 # Published patents  -> existing (unchanged) publication backend,
@@ -27,6 +35,10 @@ from grant_extractor import extract_grants
 from excel_writer import save_to_excel
 from patent_extractor import PatentExtractionError
 from journal_number import journal_number_range
+
+# ---------------- v6 discovery layer (additive) ---------------- #
+# Consumes extractor output; does not alter extraction or Excel flow.
+from dataset import Dataset
 
 # ---------------- Appearance ---------------- #
 
@@ -46,7 +58,7 @@ SUBTITLE_FONT = ("Arial", 13)
 SECTION_FONT = ("Arial", 15, "bold")
 STATUS_FONT = ("Arial", 12)
 
-APP_VERSION = "Version 5.0"
+APP_VERSION = "Version 6.0"
 
 # --------------------------------------------------
 
@@ -70,6 +82,12 @@ class PatentExtractorApp:
             WINDOW_HEIGHT
         )
 
+        # Application/window icon (branding). Safe no-op if unavailable.
+        try:
+            self.root.iconbitmap(_resource_path("icon.ico"))
+        except Exception:
+            pass
+
         # ---------------- Variables ---------------- #
 
         # "published" -> published patent applications (existing backend)
@@ -80,6 +98,9 @@ class PatentExtractorApp:
         self.selected_pdfs = []
 
         self.output_folder = None
+
+        # v6: in-memory dataset from the last extraction (for Search/Explore).
+        self.dataset = None
 
         self.build_ui()
 
@@ -297,6 +318,20 @@ class PatentExtractorApp:
         )
 
         self.open_btn.pack(
+            pady=(0, 8)
+        )
+
+        # v6: opens the discovery/search window for the last extraction.
+        self.search_btn = ctk.CTkButton(
+            frame,
+            text="🔍 Search / Explore",
+            width=220,
+            height=35,
+            state="disabled",
+            command=self.open_search
+        )
+
+        self.search_btn.pack(
             pady=(0, 15)
         )
 
@@ -427,7 +462,7 @@ class PatentExtractorApp:
         messagebox.showinfo(
             "About",
             "Indian Patent Journal Extractor\n\n"
-            "Version 5.0\n\n"
+            "Version 6.0\n\n"
             "Developed by\n"
             "Praveen Reddy Thumukuntla\n\n"
             "© 2026"
@@ -443,6 +478,7 @@ class PatentExtractorApp:
         self.browse_btn.configure(state=state)
         self.extract_btn.configure(state=state)
         self.open_btn.configure(state=state)
+        self.search_btn.configure(state=state)
         self.published_radio.configure(state=state)
         self.granted_radio.configure(state=state)
 
@@ -543,6 +579,13 @@ class PatentExtractorApp:
             stage = "writing Excel"
             save_to_excel(records, output_file)
 
+            # v6 (additive): keep the records in memory for Search / Explore.
+            # This does not affect the Excel output above in any way.
+            source_paths = {
+                os.path.basename(p): p for p in self.selected_pdfs
+            }
+            self.dataset = Dataset.from_records(records, label, source_paths)
+
             self.progress["value"] = 100
 
             self.status.configure(
@@ -567,6 +610,35 @@ class PatentExtractorApp:
 
         finally:
             self.set_controls_state("normal")
+            # Enable Search / Explore only when a dataset is loaded.
+            self.search_btn.configure(
+                state="normal" if self.dataset else "disabled"
+            )
+
+    # --------------------------------------------------
+
+    def open_search(self):
+        """Open the v6 discovery/search window for the loaded dataset.
+
+        Imported lazily so any issue in the search layer can never affect the
+        core extraction UI at startup.
+        """
+
+        if not self.dataset:
+            messagebox.showwarning(
+                "Warning",
+                "Extract patents first, then Search / Explore."
+            )
+            return
+
+        try:
+            import search_ui
+            search_ui.open_search_window(self.root, self.dataset)
+        except Exception as e:
+            messagebox.showerror(
+                "Search unavailable",
+                f"Could not open the search window:\n\n{e}"
+            )
 
     # --------------------------------------------------
 

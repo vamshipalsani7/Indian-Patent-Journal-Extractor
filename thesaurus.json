@@ -1,0 +1,20 @@
+{
+  "_comment": "Editable local thesaurus for RELATED search. Each group lists conceptually related terms; searching any member (with Related search on) also finds the others. Fully offline, no external service. Edit/extend freely; terms are matched case-insensitively.",
+  "groups": [
+    ["pesticide", "insecticide", "herbicide", "fungicide", "weedicide", "agrochemical", "crop protection", "pest control"],
+    ["electric vehicle", "ev", "electric car", "electric automobile", "battery electric vehicle", "bev", "e-vehicle"],
+    ["battery", "cell", "accumulator", "lithium ion", "li-ion", "energy storage"],
+    ["artificial intelligence", "ai", "machine learning", "ml", "deep learning", "neural network", "neural networks"],
+    ["solar", "photovoltaic", "pv", "solar cell", "solar panel", "solar energy"],
+    ["drone", "uav", "unmanned aerial vehicle", "quadcopter"],
+    ["semiconductor", "integrated circuit", "microchip", "transistor", "wafer"],
+    ["vaccine", "immunization", "inoculation", "immunisation"],
+    ["wireless", "wifi", "wi-fi", "cellular", "lte", "5g"],
+    ["blockchain", "distributed ledger", "cryptocurrency", "crypto"],
+    ["robot", "robotic", "robotics", "manipulator", "autonomous system"],
+    ["antibiotic", "antimicrobial", "antibacterial"],
+    ["fertilizer", "fertiliser", "manure", "nutrient"],
+    ["sensor", "detector", "transducer"],
+    ["encryption", "cryptography", "cipher", "cybersecurity"]
+  ]
+}

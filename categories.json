@@ -1,0 +1,20 @@
+{
+  "_comment": "Editable, rule-based technology categories for v6 analysis. A patent may match multiple categories. Matching is by keyword (single words matched as whole tokens; multi-word phrases as substrings) OR by IPC prefix, over the record's title/abstract/applicant text and IPC codes. This is ANALYSIS METADATA ONLY and is NOT an official patent classification; it never modifies IPC or any extracted field.",
+  "categories": [
+    {"name": "Artificial Intelligence / ML", "keywords": ["artificial intelligence", "machine learning", "deep learning", "neural network", "neural networks", "reinforcement learning", "llm", "transformer model"], "ipc": ["G06N"]},
+    {"name": "Cybersecurity", "keywords": ["cybersecurity", "cyber security", "encryption", "cryptography", "malware", "intrusion detection", "authentication", "firewall"], "ipc": ["H04L9", "G06F21"]},
+    {"name": "Batteries / EV", "keywords": ["battery", "electric vehicle", "lithium ion", "li-ion", "charging", "supercapacitor", "energy storage", "bev"], "ipc": ["H01M", "B60L"]},
+    {"name": "Solar / Renewable Energy", "keywords": ["solar", "photovoltaic", "wind turbine", "renewable energy", "fuel cell", "hydrogen energy"], "ipc": ["H02S", "F03D", "H01L31"]},
+    {"name": "Agriculture / Pesticides", "keywords": ["pesticide", "insecticide", "herbicide", "fungicide", "agrochemical", "crop", "fertilizer", "fertiliser", "irrigation", "agriculture"], "ipc": ["A01"]},
+    {"name": "Semiconductors", "keywords": ["semiconductor", "integrated circuit", "transistor", "wafer", "mosfet", "lithography"], "ipc": ["H01L"]},
+    {"name": "Drones / UAV", "keywords": ["drone", "uav", "unmanned aerial vehicle", "quadcopter"], "ipc": ["B64C", "B64U"]},
+    {"name": "Healthcare / Pharma", "keywords": ["pharmaceutical", "drug", "vaccine", "diagnosis", "therapy", "medical device", "antibody", "biomarker"], "ipc": ["A61K", "A61B", "A61P"]},
+    {"name": "Robotics", "keywords": ["robot", "robotic", "robotics", "manipulator", "actuator", "autonomous system"], "ipc": ["B25J"]},
+    {"name": "Telecommunications / Wireless", "keywords": ["wireless", "5g", "lte", "antenna", "modulation", "base station", "telecommunication"], "ipc": ["H04W", "H04B"]},
+    {"name": "Biotechnology", "keywords": ["gene", "genome", "crispr", "protein", "enzyme", "microbial", "fermentation", "biotechnology"], "ipc": ["C12N", "C12Q"]},
+    {"name": "Blockchain", "keywords": ["blockchain", "distributed ledger", "cryptocurrency", "smart contract"], "ipc": []},
+    {"name": "Sensors / IoT", "keywords": ["sensor", "detector", "transducer", "internet of things", "iot"], "ipc": ["G01"]},
+    {"name": "Materials / Chemistry", "keywords": ["polymer", "composite", "nanomaterial", "nanoparticle", "coating", "alloy"], "ipc": ["C08", "C01"]},
+    {"name": "Automotive", "keywords": ["vehicle", "automobile", "engine", "chassis", "braking", "powertrain"], "ipc": ["B60", "F02"]}
+  ]
+}
